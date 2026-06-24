@@ -35,20 +35,27 @@ if __name__ == "__main__":
     best_algo_name = ""
 
     print(f"\nIniciando Simulações Comparativas Justas ({num_runs} Runs, budget={max_fevals} FEs)...")
-    print("O Matplotlib abrirá primeiro. O navegador 3D abrirá em seguida.")
 
-    plt.figure(figsize=(10, 6))
+    # Dicionários para guardar as curvas médias de cada tipo de gráfico
+    mean_curves_fevals = {}
+    mean_curves_iters = {}
     
     for name, algo_func in algorithms.items():
         run_fitnesses = []
         all_histories = []
+        run_times = []
+        all_iter_curves = []
         
         for run in range(num_runs):
             np.random.seed(run * 42) # Reprodutibilidade
             evaluator = ObjectiveEvaluator(robot, target_pose)
             
-            # Executa o algoritmo atual
+            # --- MEDIÇÃO DE TEMPO INÍCIO ---
+            start_time = time.time()
             algo_func(evaluator, robot, max_fevals=max_fevals)
+            elapsed_time = time.time() - start_time
+            run_times.append(elapsed_time)
+            # -------------------------------
             
             final_fit = evaluator.best_error
             run_fitnesses.append(final_fit)
@@ -60,37 +67,76 @@ if __name__ == "__main__":
                 absolute_best_theta = evaluator.best_theta
                 best_algo_name = name
 
+        # CORREÇÃO 1: Coleta das 5 métricas estatísticas exigidas no Requisito 4
         results[name] = {
-            "mean": np.mean(run_fitnesses),
-            "std": np.std(run_fitnesses)
+            "Melhor (Min)": np.min(run_fitnesses),
+            "Pior (Max)": np.max(run_fitnesses),
+            "Média": np.mean(run_fitnesses),
+            "Desvio Padrão": np.std(run_fitnesses),
+            "Tempo Médio (s)": np.mean(run_times)
         }
         
-        # Processamento das curvas de convergência para o gráfico
+        # --- PROCESSAMENTO GRÁFICO 1: CONVERGÊNCIA POR FEs ---
         fevals_axis = np.arange(1, max_fevals + 1)
-        interpolated_curves = []
+        interpolated_fevals_curves = []
         for hist in all_histories:
             fevals_h = [h[0] for h in hist]
             fit_h = [h[1] for h in hist]
             best_so_far = np.minimum.accumulate(fit_h)
             interp = np.interp(fevals_axis, fevals_h, best_so_far)
-            interpolated_curves.append(interp)
+            interpolated_fevals_curves.append(interp)
             
-        mean_curve = np.mean(interpolated_curves, axis=0)
-        plt.plot(fevals_axis, mean_curve, label=f"{name} (Média)")
+        mean_curves_fevals[name] = np.mean(interpolated_fevals_curves, axis=0)
 
-    # Exibição do Gráfico de Convergência
+        # --- PROCESSAMENTO GRÁFICO 2: CONVERGÊNCIA POR ITERAÇÕES ---
+        # Mapeamento do tamanho da iteração de cada algoritmo para o eixo X
+        # GA (Steady State) = 1 FE por iteração; PSO = 30 FEs; BAS = 3 FEs; Híbrido ~= 1 FE
+        fevals_per_iter = 30 if name == "PSO" else (3 if name == "BAS" else 1)
+        max_iters = int(max_fevals / fevals_per_iter)
+        
+        interpolated_iter_curves = []
+        iters_axis = np.arange(1, max_iters + 1)
+        for curve in interpolated_fevals_curves:
+            # Seleciona os pontos correspondentes ao fim de cada iteração real
+            indices = (iters_axis * fevals_per_iter) - 1
+            indices = np.clip(indices, 0, len(curve) - 1)
+            interpolated_iter_curves.append(curve[indices])
+            
+        mean_curves_iters[name] = (iters_axis, np.mean(interpolated_iter_curves, axis=0))
+
+    # --- IMPRESSÃO DA TABELA COMPARATIVA (Requisito 7) ---
+    print("\n" + "="*50)
+    print("TABELA COMPARATIVA DOS RESULTADOS (20 RUNS)")
+    print("="*50)
+    for name, metrics in results.items():
+        print(f"\nAlgoritmo: {name}")
+        for metric_name, val in metrics.items():
+            print(f"  {metric_name}: {val:.4e}" if "Tempo" not in metric_name else f"  {metric_name}: {val:.4f}s")
+
+    plt.figure(1, figsize=(10, 5))
+    for name, curve in mean_curves_fevals.items():
+        plt.plot(np.arange(1, max_fevals + 1), curve, label=f"{name}")
     plt.yscale("log")
-    plt.title("Comparação Justa Fixando Avaliações de Função Objetivo", fontsize=12)
-    plt.xlabel("Avaliações da Função Objetivo (Recurso Computacional)", fontsize=10)
+    plt.title("Conversão por Avaliações da Função Objetivo (Comparação Justa)", fontsize=11)
+    plt.xlabel("Avaliações da Função Objetivo (FEs)", fontsize=10)
     plt.ylabel("Erro da Cinemática Inversa (Log)", fontsize=10)
     plt.grid(True, which="both", ls="--", alpha=0.5)
     plt.legend()
-    
-    print("\nExibindo gráfico de convergência Matplotlib...")
+    plt.savefig("convergence_by_fevals.png", dpi=300)
+
+    plt.figure(2, figsize=(10, 5))
+    for name, (axis, curve) in mean_curves_iters.items():
+        plt.plot(axis, curve, label=f"{name}")
+    plt.yscale("log")
+    plt.title("Convergência por Iterações/Gerações (Escalas Diferentes)", fontsize=11)
+    plt.xlabel("Número de Iterações / Gerações", fontsize=10)
+    plt.ylabel("Erro da Cinemática Inversa (Log)", fontsize=10)
+    plt.grid(True, which="both", ls="--", alpha=0.5)
+    plt.legend()
+    plt.savefig("convergence_by_iterations.png", dpi=300)
+
+    print("\nGráficos salvos com sucesso ('convergence_by_fevals.png' e 'convergence_by_iterations.png').")
     plt.show(block=False)
-    plt.pause(1)
-    plt.savefig("convergence_comparison.png", dpi=300)
-    print("Gráfico salvo como 'convergence_comparison.png'.")
 
     # Execução da Animação 3D com a melhor configuração real obtida
     print("\n" + "="*60)
