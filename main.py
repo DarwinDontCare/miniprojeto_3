@@ -16,7 +16,7 @@ if __name__ == "__main__":
     # Inicializa o Visualizador 3D Meshcat
     visualizer = RobotVisualizer(robot)
     visualizer.set_target_pose(target_pose)
-    visualizer.update_robot_pose(np.zeros(6)) # Pose Home inicial
+    visualizer.update_robot_pose(np.zeros(6))
     
     algorithms = {
         "GA": run_genetic_algorithm,
@@ -47,15 +47,13 @@ if __name__ == "__main__":
         all_iter_curves = []
         
         for run in range(num_runs):
-            np.random.seed(run * 42) # Reprodutibilidade
+            np.random.seed(run * 42)
             evaluator = ObjectiveEvaluator(robot, target_pose)
             
-            # --- MEDIÇÃO DE TEMPO INÍCIO ---
             start_time = time.time()
             algo_func(evaluator, robot, max_fevals=max_fevals)
             elapsed_time = time.time() - start_time
             run_times.append(elapsed_time)
-            # -------------------------------
             
             final_fit = evaluator.best_error
             run_fitnesses.append(final_fit)
@@ -67,7 +65,6 @@ if __name__ == "__main__":
                 absolute_best_theta = evaluator.best_theta
                 best_algo_name = name
 
-        # CORREÇÃO 1: Coleta das 5 métricas estatísticas exigidas no Requisito 4
         results[name] = {
             "Melhor (Min)": np.min(run_fitnesses),
             "Pior (Max)": np.max(run_fitnesses),
@@ -76,7 +73,6 @@ if __name__ == "__main__":
             "Tempo Médio (s)": np.mean(run_times)
         }
         
-        # --- PROCESSAMENTO GRÁFICO 1: CONVERGÊNCIA POR FEs ---
         fevals_axis = np.arange(1, max_fevals + 1)
         interpolated_fevals_curves = []
         for hist in all_histories:
@@ -88,9 +84,6 @@ if __name__ == "__main__":
             
         mean_curves_fevals[name] = np.mean(interpolated_fevals_curves, axis=0)
 
-        # --- PROCESSAMENTO GRÁFICO 2: CONVERGÊNCIA POR ITERAÇÕES ---
-        # Mapeamento do tamanho da iteração de cada algoritmo para o eixo X
-        # GA (Steady State) = 1 FE por iteração; PSO = 30 FEs; BAS = 3 FEs; Híbrido ~= 1 FE
         fevals_per_iter = 30 if name == "PSO" else (3 if name == "BAS" else 1)
         max_iters = int(max_fevals / fevals_per_iter)
         
@@ -104,7 +97,6 @@ if __name__ == "__main__":
             
         mean_curves_iters[name] = (iters_axis, np.mean(interpolated_iter_curves, axis=0))
 
-    # --- IMPRESSÃO DA TABELA COMPARATIVA (Requisito 7) ---
     print("\n" + "="*50)
     print("TABELA COMPARATIVA DOS RESULTADOS (20 RUNS)")
     print("="*50)
